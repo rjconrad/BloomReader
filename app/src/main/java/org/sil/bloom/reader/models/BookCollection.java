@@ -2,15 +2,14 @@ package org.sil.bloom.reader.models;
 
 import android.content.Context;
 import android.content.ContextWrapper;
-import android.database.Cursor;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Environment;
-import android.provider.OpenableColumns;
 import android.util.Log;
 
+import org.apache.commons.io.FileUtils;
 import org.sil.bloom.reader.BloomFileReader;
 import org.sil.bloom.reader.IOUtilities;
-import org.sil.bloom.reader.WiFi.NewBookListenerService;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -22,7 +21,13 @@ import java.util.List;
 public class BookCollection {
 
     private List<Book> _books = new ArrayList<Book>();
-    private File mLocalBooksDirectory;
+    private BooksDirectory mBooksDirectory;
+    public static String SHARED_PREFERENCES = "BookCollection.SharedPreferences";
+    public static String USING_EXTERNAL_STORAGE_TAG = "Storage.external";
+    public static String FIRST_RUN_TAG = "FirstRun";
+    public static int DIRECTORY_ACCESSIBLE = 0;
+    public static int DIRECTORY_MOUNTED_ON_COMPUTER = 1;
+    public static int DIRECTORY_INACCESSIBLE = 2;
 
     public int indexOf(Book book) { return _books.indexOf(book); }
 
@@ -57,30 +62,19 @@ public class BookCollection {
         return null;
     }
 
-    public void init(Context context) {
-        ContextWrapper cw = new ContextWrapper(context);
-        //File directory = cw.getExternalFilesDir("books");
-        //IOUtilities.deleteFileOrDirectory(directory);
-
-        SampleBookLoader.CopySampleBooksFromAssetsIntoBooksFolder(context, mLocalBooksDirectory);
-
-//        for (int i = 2; i <= 4; i++) {
-//            createFilesForDummyBook(context, directory, i);
-//        }
-
-        // load from our private directory. We may get rid of this entirely
-        //LoadFromDirectory(directory);
-
-        // load from the directory the user can see
-        mLocalBooksDirectory = getLocalBooksDirectory();
-        LoadFromDirectory(mLocalBooksDirectory);
+    public void init(Context context) throws BooksDirectoryException {
+        SharedPreferences values = context.getSharedPreferences(SHARED_PREFERENCES, 0);
+        if(values.getBoolean(FIRST_RUN_TAG, true)){
+            mBooksDirectory = new BooksDirectory(context);
+            SampleBookLoader.CopySampleBooksFromAssetsIntoBooksFolder(context, mBooksDirectory.directory());
+            values.edit().putBoolean(FIRST_RUN_TAG, false);
+        } else{
+            mBooksDirectory = new BooksDirectory(context, values.getBoolean(USING_EXTERNAL_STORAGE_TAG, true));
+        }
+        loadFromDirectory(mBooksDirectory.directory());
     }
 
-    public static File getLocalBooksDirectory() {
-        return Environment.getExternalStoragePublicDirectory("Bloom");
-    }
-
-    private void LoadFromDirectory(File directory) {
+    private void loadFromDirectory(File directory) {
         File[] files = directory.listFiles();
         if(files != null) {
             for (int i = 0; i < files.length; i++) {
